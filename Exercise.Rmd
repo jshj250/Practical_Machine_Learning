@@ -1,0 +1,110 @@
+---
+title: "Predict the Exercise Manner"
+author: "jshj250"
+date: "Sunday, June 22, 2014"
+output: html_document
+---
+
+### Task Summary
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. In this project we collect the data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. We will use any of the other variables to predict with. 
+
+### Load Dataset
+
+The data are available in the website on COURSERA. Here, we download the dataset and load them through the function **read.csv**(). You may pay much attention on the setting of **na.strings**. Then, we obtain the **training** dataset and the **testing** dataset.
+
+```{r, echo=TRUE, results='hide', fig.show='hide'}
+library(caret)
+training <- read.csv('pml-training.csv',header=T,dec='.',na.strings=c('NA', ''))
+testing  <- read.csv('pml-testing.csv', header=T,dec='.',na.strings=c('NA', ''))
+```
+
+### Data Pre-Processing
+
+We find that there are many missing values (**NA**) in the columns of training and testing dataset. For many columns, almost 100% of data are unknown in the training and testing dataset. 
+Therefore, when we are handling the dataset with missing values, we follow the most common strategy, i.e. remove the columns with missing values. The following code accomplishes the above removing strategy.
+
+```{r, echo=TRUE, results='hide', fig.show='hide'}
+library(caret)
+element_name   <- names(as.data.frame(t(na.omit(t(training)))))
+clean_training <- training[, element_name]
+clean_testing  <- testing [, element_name[-length(element_name)]]
+clean_training <- clean_training[, -1]
+clean_testing  <- clean_testing [, -1]
+```
+
+After the data pre-processing, the number of predictors decreases from **`r dim(training)[2]`** to **`r dim(clean_training)[2]`**. None of missing values exists in the training and testing dataset.
+
+### Data Splitting
+
+The function **createDataPartition**() can be used to create a stratified random sample of the data into training and testing sets. In this project, we create a single 75%/24% split of the data. 
+
+```{r, echo=TRUE, results='hide', fig.show='hide'}
+set.seed(998)
+inTraining  <- createDataPartition(clean_training$classe, p = 0.75, list = FALSE)
+cv_training <- clean_training[ inTraining, ]
+cv_testing  <- clean_training[-inTraining, ]
+```
+
+### Model Building
+Repeated K-fold cross-validation is used for determining the optimal parameter of prediction model. The function **trainControl**() can be used to specifiy the type of resampling. Due to the limited time, we choose **2**-fold cross-validation for repeating **2** times. 
+You can increase the value of K-fold and repeating time. In this project, we fit a boosted tree model via the **gbm** package. The R code for fitting this model using repeated K-fold cross-validation is shown below:
+
+```{r, echo=TRUE, results='hide', fig.show='hide'}
+set.seed(825)
+fitControl <- trainControl(method = "repeatedcv", number = 2, repeats = 2)
+gbm_Fit <- train(classe ~ ., data = cv_training, method = "gbm", trControl = fitControl)
+```
+
+```{r, echo=TRUE, results='hode', fig.show='hode'}
+gbm_Fit
+```
+
+### Cross Validation
+
+After the repeated K-fold cross-validation, we can choose best tuning parameters. The plot function can be used to examine the relationship between the estimates of performance and the tuning parameters. For example, a simple invokation of the function shows the results for two different performance measures, i.e. metric = **Accuracy** and **Kappa**.
+
+```{r, echo=TRUE, results='hode', fig.show='hode'}
+trellis.par.set(caretTheme())
+plot(gbm_Fit, metric = "Accuracy")
+trellis.par.set(caretTheme())
+plot(gbm_Fit, metric = "Kappa")
+```
+
+### Prediction Error
+
+In cases where the model tuning values are known, the train process can be used to fit the model to the entire training set without any resampling or parameter tuning. Using the **method = "none"** option in **trainControl** can be used. Then we can apply this model to 
+predict the testing dataset.
+
+```{r, echo=TRUE, results='hide', fig.show='hide'}
+set.seed(825)
+fitControl <- trainControl(method = "none", classProbs = TRUE)
+gbm_Fit_CV <- train(classe ~ ., data = cv_training, method = "gbm", trControl = fitControl, 
+                    tuneGrid = gbm_Fit$bestTune)
+pred  <- predict(gbm_Fit_CV, newdata = cv_testing)
+obs   <-  cv_testing$classe
+metric <- defaultSummary(data = data.frame(obs=obs, pred=pred))
+```
+
+```{r, echo=TRUE, results='hode', fig.show='hode'}
+metric
+```
+
+The expected out of sample error is **`r names(metric)[1]`** = **`r metric[1]`** and **`r names(metric)[2]`** = **`r metric[2]`**
+
+### Prediction for Test Dataset
+
+Finally, we give the predict result of the testing dataset whose class label is unknown.
+
+```{r, echo=TRUE, results='hide', fig.show='hide'}
+set.seed(825)
+fitControl <- trainControl(method = "none", classProbs = TRUE)
+gbm_Fit_Final <- train(classe ~ ., data = clean_training, method = "gbm", 
+                       trControl = fitControl, tuneGrid = gbm_Fit$bestTune)
+pred  <- predict(gbm_Fit_Final, newdata = clean_testing)
+```
+
+```{r, echo=TRUE, results='hode', fig.show='hode'}
+pred
+```
+
